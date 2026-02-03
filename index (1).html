@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cosquín Rock 2026 - Planner</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Firebase (Realtime Database) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useMemo, useEffect } = React;
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyAhUsg3RulJzzeBlKVXD-LeZ_rQCQbylEQ",
+            authDomain: "cosquin-rock-planner.firebaseapp.com",
+            databaseURL: "https://cosquin-rock-planner-default-rtdb.firebaseio.com",
+            projectId: "cosquin-rock-planner",
+            storageBucket: "cosquin-rock-planner.firebasestorage.app",
+            messagingSenderId: "967678276390",
+            appId: "1:967678276390:web:d77f3527bb6826fd6607e7"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        // Un "room" fijo para ustedes
+        const ROOM_ID = "cosquinrock2026";
+        const votesRef = db.ref(`rooms/${ROOM_ID}/votes`);
+
+        // Iconos SVG simples
+        const Icons = {
+            Users: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+                </svg>
+            ),
+            Calendar: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+            ),
+            Clock: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+            ),
+            MapPin: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+            ),
+            Star: () => (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+                </svg>
+            ),
+            Music: () => (
+                <svg className="w-10 h-10" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                </svg>
+            )
+        };
+
+        const CosquinRockPlanner = () => {
+            const [selectedDay, setSelectedDay] = useState('viernes');
+            const [votes, setVotes] = useState({});
+            const [activeUser, setActiveUser] = useState(0);
+            
+            // Escuchar cambios en Firebase (votos en tiempo real)
+            useEffect(() => {
+                votesRef.on("value", (snap) => {
+                    const data = snap.val() || {};
+                    // Convertir todos los valores a arrays si no lo son
+                    const cleanedData = {};
+                    Object.keys(data).forEach(key => {
+                        cleanedData[key] = Array.isArray(data[key]) ? data[key] : Object.values(data[key] || {});
+                    });
+                    setVotes(cleanedData);
+                });
+
+                return () => votesRef.off();
+            }, []);
+
+            const users = [
+                { name: 'Rochi', color: 'bg-pink-500' },
+                { name: 'Wolo', color: 'bg-purple-500' },
+                { name: 'Sere', color: 'bg-blue-500' },
+                { name: 'Mery', color: 'bg-green-500' },
+                { name: 'Moka', color: 'bg-yellow-500' },
+                { name: 'Ninu', color: 'bg-orange-500' },
+                { name: 'Rena', color: 'bg-red-500' },
+                { name: 'Berto', color: 'bg-teal-500' },
+                { name: 'Solci', color: 'bg-indigo-500' }
+            ];
+
+            const schedule = {
+                viernes: {
+                    'Escenario Norte': [
+                        { time: '14:30', band: 'KILL FLORA' },
+                        { time: '15:20', band: 'ERUCA SATIVA' },
+                        { time: '16:30', band: 'EL ZAR' },
+                        { time: '17:50', band: 'TURF' },
+                        { time: '19:30', band: 'DILLOM' },
+                        { time: '21:20', band: 'BABASÓNICOS' },
+                        { time: '23:20', band: 'LALI' },
+                        { time: '00:40', band: 'CALIGARIS' }
+                    ],
+                    'Escenario Sur': [
+                        { time: '14:30', band: 'FANTASMAGORÍA' },
+                        { time: '15:20', band: 'LA MISSISSIPPI' },
+                        { time: '16:30', band: 'EMI' },
+                        { time: '17:50', band: 'CRUZANDO EL CHARCO' },
+                        { time: '19:40', band: 'CIRO Y LOS PERSAS' },
+                        { time: '21:40', band: 'LA VELA PUERCA' },
+                        { time: '23:20', band: 'LAS PELOTAS' },
+                        { time: '00:40', band: 'VIEJAS LOCAS / JÓVENES PORDIOSEROS' }
+                    ],
+                    'Escenario Montaña': [
+                        { time: '14:15', band: 'CHECHI DE MARCOS' },
+                        { time: '15:00', band: 'RYAN' },
+                        { time: '15:50', band: 'BERSUIT VERGARABAT' },
+                        { time: '17:10', band: 'MARILINA BERTOLDI' },
+                        { time: '18:40', band: 'EL KUELGUE' },
+                        { time: '20:40', band: 'CUARTETO DE NOS' },
+                        { time: '22:40', band: 'FRANZ FERDINAND' },
+                        { time: '00:00', band: 'THE CHEMICAL BROTHERS (DJ SET)' },
+                        { time: '02:00', band: 'VICTORIA WHYNOT' }
+                    ],
+                    'Escenario Boomerang': [
+                        { time: '14:10', band: 'MICROTUL' },
+                        { time: '14:50', band: '1915' },
+                        { time: '15:40', band: 'UN MUERTO MAS' },
+                        { time: '16:30', band: 'GIRL ULTRA' },
+                        { time: '17:20', band: 'HERMANOS GUTIÉRREZ' },
+                        { time: '18:20', band: 'INDIOS' },
+                        { time: '19:20', band: 'ESTELARES' },
+                        { time: '20:40', band: 'ABEL PINTOS' },
+                        { time: '21:50', band: 'LA FRANELA' },
+                        { time: '23:10', band: 'COTI' },
+                        { time: '00:30', band: 'AMIGO DE ARTISTAS' }
+                    ],
+                    'La Casita del Blues': [
+                        { time: '14:15', band: 'GOLO\'S BAND' },
+                        { time: '15:05', band: 'LOS MENTIDORES' },
+                        { time: '15:55', band: 'LAS WITCHES' },
+                        { time: '16:50', band: 'LE DRACS' },
+                        { time: '17:45', band: 'PERRO SUIZO' },
+                        { time: '18:40', band: 'MISTY SOUL CHOIR' },
+                        { time: '19:35', band: 'TANGO & ROLL' },
+                        { time: '20:30', band: 'WAYRA IGLESIAS' },
+                        { time: '21:25', band: 'LOS ESPÍRITUS' },
+                        { time: '22:30', band: 'PITI FERNÁNDEZ' },
+                        { time: '23:35', band: 'LES DIABOLETTES' }
+                    ],
+                    'La Plaza Electronic': [
+                        { time: '16:00', band: 'CLAUDIO RICCI' },
+                        { time: '17:00', band: 'VALENTÍN HUEDO B2B BRUZ' },
+                        { time: '19:00', band: 'LEHAR B2B SANTIAGO GARCÍA' },
+                        { time: '21:00', band: 'SORÄ' },
+                        { time: '22:30', band: 'ARKADYAN' }
+                    ],
+                    'Escenario Sorpresa': [
+                        { time: '15:50', band: 'FALSED' },
+                        { time: '18:40', band: 'SORPRESA' },
+                        { time: '22:20', band: 'SORPRESA' }
+                    ]
+                },
+                sabado: {
+                    'Escenario Norte': [
+                        { time: '14:30', band: 'SOFI MORA' },
+                        { time: '15:20', band: 'BLAIR' },
+                        { time: '16:30', band: 'GAUCHITO CLUB' },
+                        { time: '17:50', band: 'BANDALOS CHINOS' },
+                        { time: '19:10', band: 'FITO PAEZ' },
+                        { time: '20:55', band: 'AIRBAG' },
+                        { time: '23:00', band: 'YSY A' },
+                        { time: '00:20', band: 'CARAS EXTRAÑAS' }
+                    ],
+                    'Escenario Sur': [
+                        { time: '14:20', band: 'AINDA' },
+                        { time: '15:10', band: 'KAPANGA' },
+                        { time: '16:25', band: 'PAPPO X JUANSE' },
+                        { time: '17:45', band: 'EL PLAN DE LA MARIPOSA' },
+                        { time: '19:40', band: 'DIVIDIDOS' },
+                        { time: '21:30', band: 'TRUENO' },
+                        { time: '23:10', band: 'GUASONES' },
+                        { time: '00:50', band: 'LOUTA' }
+                    ],
+                    'Escenario Montaña': [
+                        { time: '14:30', band: 'RENZO LEALI' },
+                        { time: '15:00', band: 'BEATS MODERNOS' },
+                        { time: '15:50', band: 'GUSTAVO CORDERA' },
+                        { time: '17:00', band: 'LOS PERICOS' },
+                        { time: '18:30', band: 'SILVESTRE Y LA NARANJA' },
+                        { time: '20:20', band: 'MORAT' },
+                        { time: '22:20', band: 'LAS PASTILLAS DEL ABUELO' },
+                        { time: '00:00', band: 'PECES RAROS' },
+                        { time: '01:00', band: 'MARIANO MELLINO' },
+                        { time: '02:00', band: 'FRANKY WAH' }
+                    ],
+                    'Escenario Paraguay': [
+                        { time: '14:20', band: 'WANDA JAEL' },
+                        { time: '15:10', band: 'T&K' },
+                        { time: '16:10', band: 'MALANDRO' },
+                        { time: '17:20', band: 'GAUCHOS OF THE PAMPA' },
+                        { time: '18:20', band: 'DEVENDRA BANHART' },
+                        { time: '19:30', band: 'DUM CHICA' },
+                        { time: '20:30', band: 'MARKY RAMONE' },
+                        { time: '21:35', band: 'DAVID ELLEFSON' },
+                        { time: '22:35', band: 'CTM' },
+                        { time: '23:35', band: 'SIX SEX' },
+                        { time: '00:45', band: 'EL CLUB DE LA SERPIENTE' }
+                    ],
+                    'La Casita del Blues': [
+                        { time: '14:15', band: 'ROSY GOMEEZ' },
+                        { time: '15:05', band: 'LABIOS DE SAL' },
+                        { time: '15:55', band: 'RUDY' },
+                        { time: '16:50', band: 'BULLDOZER BLUES BAND' },
+                        { time: '17:45', band: 'CORDELIA\'S BLUES' },
+                        { time: '18:40', band: 'GRASSHOPPER\'S' },
+                        { time: '19:35', band: 'GISA LONDERO & TOYO BAGOSO' },
+                        { time: '20:40', band: 'CRYSTAL THOMAS & LUCA GIORDANO' },
+                        { time: '21:45', band: 'NINA PORTELA' },
+                        { time: '22:40', band: 'XIME MONZÓN' },
+                        { time: '23:35', band: 'LORETTA SORBELLO' }
+                    ],
+                    'La Plaza Electronic': [
+                        { time: '16:00', band: 'LOURDES LOURDES' },
+                        { time: '17:00', band: 'GLAUCO DI MAMBRO' },
+                        { time: '18:00', band: 'BRIGADO CREW' },
+                        { time: '19:30', band: 'DEER JADE' },
+                        { time: '21:00', band: 'FRANKY WAH' },
+                        { time: '22:30', band: 'KÖLSCH' },
+                        { time: '00:00', band: 'MATIAS TANZMANN' }
+                    ],
+                    'Escenario Sorpresa': [
+                        { time: '15:50', band: 'GOLDEN FLOYD' },
+                        { time: '17:10', band: 'SORPRESA' },
+                        { time: '22:20', band: 'AGARRATE CATALINA' }
+                    ]
+                }
+            };
+
+            const toggleVote = (day, stage, band, time) => {
+                const key = `${day}-${stage}-${band}-${time}`;
+                const currentVotes = votes[key] || [];
+                
+                let newVotes;
+                if (currentVotes.includes(activeUser)) {
+                    newVotes = currentVotes.filter(u => u !== activeUser);
+                } else {
+                    newVotes = [...currentVotes, activeUser];
+                }
+                
+                // Guardar en Firebase
+                votesRef.child(key).set(newVotes);
+            };
+
+            const getVotesForBand = (day, stage, band, time) => {
+                const key = `${day}-${stage}-${band}-${time}`;
+                return votes[key] || [];
+            };
+
+            const timeSlots = useMemo(() => {
+                const times = new Set();
+                Object.values(schedule[selectedDay]).forEach(stageShows => {
+                    stageShows.forEach(show => times.add(show.time));
+                });
+                return Array.from(times).sort();
+            }, [selectedDay]);
+
+            const getShowAtTime = (stage, time) => {
+                return schedule[selectedDay][stage]?.find(show => show.time === time);
+            };
+
+            const getConflictCount = (time) => {
+                let count = 0;
+                Object.keys(schedule[selectedDay]).forEach(stage => {
+                    const show = getShowAtTime(stage, time);
+                    if (show) count++;
+                });
+                return count;
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-purple-900 via-pink-800 to-orange-700 p-4">
+                    <div className="max-w-7xl mx-auto">
+                        {/* Header */}
+                        <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 mb-6 border border-white/20 shadow-2xl">
+                            <div className="flex items-center gap-3 mb-4">
+                                <Icons.Music />
+                                <div>
+                                    <h1 className="text-3xl md:text-4xl font-bold text-white">
+                                        Cosquín Rock 2026
+                                    </h1>
+                                    <p className="text-white/80 text-sm mt-1">
+                                        14 y 15 de Febrero • Aeródromo Santa María de Punilla, Córdoba
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Controls */}
+                        <div className="grid md:grid-cols-2 gap-4 mb-6">
+                            {/* Day Selector */}
+                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Icons.Calendar />
+                                    <h3 className="text-white font-semibold">Día del Festival</h3>
+                                </div>
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={() => setSelectedDay('viernes')}
+                                        className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+                                            selectedDay === 'viernes'
+                                                ? 'bg-pink-500 text-white shadow-lg scale-105'
+                                                : 'bg-white/20 text-white/70 hover:bg-white/30'
+                                        }`}
+                                    >
+                                        Viernes 14
+                                    </button>
+                                    <button
+                                        onClick={() => setSelectedDay('sabado')}
+                                        className={`flex-1 py-3 rounded-lg font-semibold transition-all ${
+                                            selectedDay === 'sabado'
+                                                ? 'bg-pink-500 text-white shadow-lg scale-105'
+                                                : 'bg-white/20 text-white/70 hover:bg-white/30'
+                                        }`}
+                                    >
+                                        Sábado 15
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* User Selector */}
+                            <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 border border-white/20">
+                                <div className="flex items-center gap-2 mb-3">
+                                    <Icons.Users />
+                                    <h3 className="text-white font-semibold">¿Quién sos?</h3>
+                                </div>
+                                <select
+                                    value={activeUser}
+                                    onChange={(e) => setActiveUser(Number(e.target.value))}
+                                    className="w-full bg-white/20 text-white border border-white/30 rounded-lg px-4 py-3 focus:outline-none focus:ring-2 focus:ring-pink-400 cursor-pointer"
+                                >
+                                    {users.map((user, idx) => (
+                                        <option key={idx} value={idx} className="bg-purple-900 text-white">
+                                            {user.name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+
+                        {/* Legend */}
+                        <div className="bg-white/10 backdrop-blur-md rounded-xl p-4 mb-6 border border-white/20">
+                            <h3 className="text-white font-semibold mb-3 flex items-center gap-2">
+                                <Icons.Users />
+                                Leyenda de Colores
+                            </h3>
+                            <div className="flex flex-wrap gap-2">
+                                {users.map((user, idx) => (
+                                    <div 
+                                        key={idx} 
+                                        className={`flex items-center gap-2 rounded-full px-3 py-1.5 transition-all ${
+                                            activeUser === idx ? 'bg-white/30 scale-105' : 'bg-white/10'
+                                        }`}
+                                    >
+                                        <div className={`w-3 h-3 rounded-full ${user.color} shadow-lg`} />
+                                        <span className="text-white text-sm font-medium">{user.name}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Instructions */}
+                        <div className="bg-gradient-to-r from-pink-500/20 to-purple-500/20 backdrop-blur-md rounded-xl p-4 mb-6 border border-pink-400/30">
+                            <p className="text-white text-center text-sm md:text-base">
+                                💡 <strong>Cómo usar:</strong> Seleccioná tu nombre arriba, luego hacé click en las bandas que querés ver. Los puntos de colores muestran quién votó cada banda. ¡Los votos se sincronizan en tiempo real entre todas! 🔥
+                            </p>
+                        </div>
+
+                        {/* Schedule Grid */}
+                        <div className="bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 overflow-x-auto">
+                            <div className="flex items-center gap-2 mb-4">
+                                <Icons.Clock />
+                                <h3 className="text-white font-semibold text-lg">
+                                    Grilla de Shows - {selectedDay === 'viernes' ? 'Viernes 14' : 'Sábado 15'}
+                                </h3>
+                            </div>
+                            
+                            <div className="min-w-[1200px]">
+                                {/* Headers */}
+                                <div className="grid gap-2 mb-2" style={{ gridTemplateColumns: `120px repeat(${Object.keys(schedule[selectedDay]).length}, 1fr)` }}>
+                                    <div className="font-semibold text-white bg-white/20 rounded-lg p-3 text-center">
+                                        <Icons.Clock />
+                                        <span className="text-xs">Horario</span>
+                                    </div>
+                                    {Object.keys(schedule[selectedDay]).map((stage) => (
+                                        <div key={stage} className="font-semibold text-white bg-gradient-to-br from-pink-500/40 to-purple-500/40 rounded-lg p-3 text-center border border-white/30">
+                                            <Icons.MapPin />
+                                            <span className="text-xs leading-tight">{stage}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Time Slots */}
+                                {timeSlots.map((time) => {
+                                    const conflictCount = getConflictCount(time);
+                                    return (
+                                        <div key={time} className="grid gap-2 mb-2" style={{ gridTemplateColumns: `120px repeat(${Object.keys(schedule[selectedDay]).length}, 1fr)` }}>
+                                            <div className="bg-white/20 rounded-lg p-3 flex flex-col items-center justify-center border border-white/30">
+                                                <span className="text-white font-bold text-sm">{time}</span>
+                                                {conflictCount > 1 && (
+                                                    <span className="text-yellow-300 text-xs mt-1 font-semibold">
+                                                        {conflictCount} shows
+                                                    </span>
+                                                )}
+                                            </div>
+                                            
+                                            {Object.keys(schedule[selectedDay]).map((stage) => {
+                                                const show = getShowAtTime(stage, time);
+                                                if (!show) {
+                                                    return <div key={stage} className="bg-white/5 rounded-lg border border-white/10" />;
+                                                }
+
+                                                const bandVotes = getVotesForBand(selectedDay, stage, show.band, time);
+                                                const isVotedByCurrentUser = bandVotes.includes(activeUser);
+
+                                                return (
+                                                    <button
+                                                        key={stage}
+                                                        onClick={() => toggleVote(selectedDay, stage, show.band, time)}
+                                                        className={`rounded-lg p-3 text-left transition-all transform hover:scale-105 border-2 ${
+                                                            isVotedByCurrentUser
+                                                                ? `${users[activeUser].color} border-yellow-300 shadow-xl`
+                                                                : 'bg-white/10 border-white/20 hover:bg-white/20'
+                                                        }`}
+                                                    >
+                                                        <div className="text-white font-semibold text-xs leading-tight mb-2">
+                                                            {show.band}
+                                                        </div>
+                                                        {bandVotes.length > 0 && (
+                                                            <>
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <div className="text-yellow-300 text-xs font-bold">
+                                                                        {bandVotes.length}/{users.length} • {Math.round((bandVotes.length / users.length) * 100)}%
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-wrap gap-1">
+                                                                    {bandVotes.map((userIdx) => (
+                                                                        <div
+                                                                            key={userIdx}
+                                                                            className={`w-3 h-3 rounded-full ${users[userIdx].color} border-2 border-white shadow-md`}
+                                                                            title={users[userIdx].name}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Summary */}
+                        <div className="mt-6 bg-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20">
+                            <h3 className="text-white font-semibold mb-4 flex items-center gap-2 text-lg">
+                                <Icons.Star />
+                                Resumen de Votaciones - {selectedDay === 'viernes' ? 'Viernes 14' : 'Sábado 15'}
+                            </h3>
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {users.map((user, idx) => {
+                                    const userVotedBands = Object.entries(votes)
+                                        .filter(([key, voters]) => {
+                                            const votersArray = Array.isArray(voters) ? voters : [];
+                                            return votersArray.includes(idx) && key.startsWith(selectedDay);
+                                        })
+                                        .map(([key]) => {
+                                            const parts = key.split('-');
+                                            return parts[2];
+                                        });
+                                    
+                                    return (
+                                        <div 
+                                            key={idx} 
+                                            className={`bg-white/10 rounded-lg p-4 border transition-all ${
+                                                activeUser === idx ? 'border-white/50 bg-white/20' : 'border-white/20'
+                                            }`}
+                                        >
+                                            <div className="flex items-center gap-2 mb-2">
+                                                <div className={`w-4 h-4 rounded-full ${user.color} shadow-lg`} />
+                                                <span className="text-white font-semibold">{user.name}</span>
+                                                <span className="text-white/60 text-sm ml-auto font-bold">
+                                                    {userVotedBands.length} bandas
+                                                </span>
+                                            </div>
+                                            {userVotedBands.length > 0 && (
+                                                <div className="text-white/80 text-xs mt-2 leading-relaxed">
+                                                    {userVotedBands.slice(0, 3).join(', ')}
+                                                    {userVotedBands.length > 3 && ` +${userVotedBands.length - 3} más`}
+                                                </div>
+                                            )}
+                                            {userVotedBands.length === 0 && (
+                                                <div className="text-white/40 text-xs mt-2 italic">
+                                                    Sin votos todavía
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        {/* Top Voted Bands */}
+                        <div className="mt-6 bg-gradient-to-br from-yellow-500/20 to-orange-500/20 backdrop-blur-md rounded-xl p-6 border border-yellow-400/30">
+                            <h3 className="text-white font-bold mb-4 flex items-center gap-2 text-xl">
+                                <Icons.Star />
+                                🏆 Bandas Más Votadas - {selectedDay === 'viernes' ? 'Viernes 14' : 'Sábado 15'}
+                            </h3>
+                            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                {(() => {
+                                    const bandVoteCounts = {};
+                                    Object.entries(votes)
+                                        .filter(([key]) => key.startsWith(selectedDay))
+                                        .forEach(([key, voters]) => {
+                                            const votersArray = Array.isArray(voters) ? voters : [];
+                                            const parts = key.split('-');
+                                            const stage = parts[1];
+                                            const band = parts[2];
+                                            const time = parts[3];
+                                            if (!bandVoteCounts[band]) {
+                                                bandVoteCounts[band] = { band, stage, time, count: 0 };
+                                            }
+                                            bandVoteCounts[band].count = votersArray.length;
+                                        });
+                                    
+                                    const topBands = Object.values(bandVoteCounts)
+                                        .sort((a, b) => b.count - a.count)
+                                        .slice(0, 9);
+
+                                    if (topBands.length === 0) {
+                                        return (
+                                            <div className="col-span-full text-center text-white/60 py-8">
+                                                <p className="text-lg">Todavía no hay votos para este día</p>
+                                                <p className="text-sm mt-2">¡Empezá a votar tus bandas favoritas! 🎸</p>
+                                            </div>
+                                        );
+                                    }
+
+                                    return topBands.map((item, idx) => {
+                                        const percentage = Math.round((item.count / users.length) * 100);
+                                        const bandVoters = getVotesForBand(selectedDay, item.stage, item.band, item.time);
+                                        
+                                        return (
+                                            <div 
+                                                key={idx}
+                                                className="bg-white/20 rounded-lg p-4 border-2 border-yellow-400/50 relative overflow-hidden"
+                                            >
+                                                {idx < 3 && (
+                                                    <div className="absolute top-2 right-2 text-2xl">
+                                                        {idx === 0 && '🥇'}
+                                                        {idx === 1 && '🥈'}
+                                                        {idx === 2 && '🥉'}
+                                                    </div>
+                                                )}
+                                                <div className="flex items-start justify-between mb-2">
+                                                    <div className="flex-1 pr-8">
+                                                        <h4 className="text-white font-bold text-sm leading-tight mb-1">
+                                                            {item.band}
+                                                        </h4>
+                                                        <div className="flex items-center gap-2 text-xs text-white/80">
+                                                            <Icons.MapPin />
+                                                            <span>{item.stage}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 text-xs text-white/80 mt-1">
+                                                            <Icons.Clock />
+                                                            <span>{item.time}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="mt-3">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-yellow-300 font-bold text-lg">
+                                                            {item.count}/{users.length}
+                                                        </span>
+                                                        <span className="text-yellow-300 font-bold text-lg">
+                                                            {percentage}%
+                                                        </span>
+                                                    </div>
+                                                    
+                                                    <div className="w-full bg-white/20 rounded-full h-2 mb-2">
+                                                        <div 
+                                                            className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full transition-all duration-500"
+                                                            style={{ width: `${percentage}%` }}
+                                                        />
+                                                    </div>
+                                                    
+                                                    <div className="flex flex-wrap gap-1 mt-2">
+                                                        {bandVoters.map((userIdx) => (
+                                                            <div
+                                                                key={userIdx}
+                                                                className={`w-4 h-4 rounded-full ${users[userIdx].color} border-2 border-white shadow-md`}
+                                                                title={users[userIdx].name}
+                                                            />
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="mt-6 text-center text-white/60 text-sm space-y-1">
+                            <p className="text-lg">🎸 ¡Que disfruten el festival! 🎸</p>
+                            <p className="text-xs">Hecho con ♥ para el mejor grupo de amigas</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Render the app
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<CosquinRockPlanner />);
+    </script>
+</body>
+</html>
